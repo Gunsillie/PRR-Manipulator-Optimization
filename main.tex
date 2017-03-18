@@ -1,0 +1,374 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amsthm}
+
+\usepackage{graphicx}
+\usepackage[newfloat]{minted}
+\usemintedstyle{vs}
+\usepackage{hyperref}
+\usepackage{listings}
+\lstset{language=Matlab}
+\usepackage{mathabx}
+\usepackage{caption}
+\usepackage{multicol}
+\setlength{\columnsep}{5mm}
+\usepackage{wrapfig}
+\usepackage{siunitx}
+
+\newtheorem*{remark}{Remarque}
+\newenvironment{Figure}
+  {\par\medskip\noindent\minipage{\linewidth}}
+  {\endminipage\par\medskip}
+
+\title{Optimisation d'un manipulateur parallèle plan}
+\author{Romain PESSIA, Maxime HOLSTEIN}
+\date{12 février 2017}
+\begin{document}
+\maketitle
+%\justify
+\begin{multicols*}{2}
+
+\section*{Présentation du problème}
+
+On s'intéresse ici au sujet numéro 1, c'est-à-dire à l'optimisation d'un robot manipulateur planaire à trois degrés de liberté. En particulier, nous nous sommes tournés vers un manipulateur de type \underline{P}RR (où la lettre P symbolise une liaison prismatique, et R une liaison prismatique, comme expliqué dans \cite{merl06}). Ce robot est composé d'une base triangulaire équilatérale fixe $A_1 A_2 A_3$ dont chaque côté est muni d'une liaison prismatique actionnant trois barres d'extrémités $B_i$ et de longueurs variables. Trois barres secondaires $B_i C_i$ sont liées aux barres $A_i B_i$ par des liaisons rotoïdes. Enfin, les points $C_i$ forment la plate-forme mobile $C_1 C_2 C_3$, également de forme triangulaire équilatérale. Son centre de gravité  $P$ représente la position de l'effecteur. La \hyperref[schem]{Figure \ref{schem}} offre une représentation du robot et de sa paramétrisation géométrique telle qu'utilisée par S. Caro \textit{et al.}(\cite{caro11}, p. 374). 
+
+% \begin{wrapfigure}{l}{\linewidth}
+%         \centering
+%         \includegraphics[width=\linewidth]{schem.jpg}
+%         \caption{Représentation du robot manipulateur 3-\underline{P}RR}
+%         \label{schem}
+% \end{wrapfigure
+\begin{Figure}
+        \includegraphics[width=\textwidth]{schem.jpg}
+        \captionof{figure}{Représentation du robot manipulateur 3-\underline{P}RR}
+        \label{schem}
+\end{Figure}
+
+Le problème d'optimisation demande la minimisation d'un seul paramètre, qui est l'espace total occupé par le robot. On décide alors de résoudre ce problème en agissant sur les trois paramètres suivants : le rayon $r$ du cercle circonscrit au triangle délimitant la plate-forme mobile ; le rayon $R$ du cercle circonscrit au triangle formant la base du manipulateur ; et la longueur $L_b$ des barres $B_i C_i$, que l'on choisira identique pour les trois. Le problème d'optimisation consiste alors simplement à minimiser $R$. 
+
+Ce paramétrage impose de prendre en compte deux contraintes géométriques :
+\begin{itemize}
+    \item les joints des liaisons prismatiques  ne peuvent pas se trouver en-dehors du triangle $A_1 A_2 A_3$, ce qui implique l'inégalité suivante :
+    \begin{equation}
+        0< \rho_i < \sqrt{3} R
+    \end{equation}
+    \item Le robot doit pouvoir être assemblé, d'où la condition sur les données du problème obtenue à partir de la \hyperref[ext]{Figure \ref{ext}}. On a ainsi :
+    \begin{equation}
+       R \leq 2 (L_b+r) 
+    \end{equation}
+\end{itemize}
+
+\begin{Figure}
+\centering
+\includegraphics[width=\textwidth]{a.png}
+% \begin{tikzpicture}
+% \draw[black, thick] (-1.5,0) -- (6,0) -- (2.25,6.5) -- cycle;
+% \draw[black, thick, fill=gray!50] (0.375+2*1.73/2,3.25-2/2) -- (0.375+4*1.73/2,3.25-4/2)  -- (3.75,3) -- cycle;
+% \draw[black, thick] (0.375,3.25) -- (0.375+2*1.73/2,3.25-2/2);
+% \draw[black, thick] (0.375+4*1.73/2,3.25-4/2) -- (6,0);
+% \draw[black, thick] (3.75,3) -- (3.1,5);
+% %\filldraw[black] (-1,0) node[anchor=east] {$A_1$};
+% \end{tikzpicture}
+
+ \captionof{figure}{Représentation de la configuration limite de montage du manipulateur}
+ \label{ext}
+\end{Figure}
+En plus de ces conditions, des contraintes supplémentaires sont imposées par l'énoncé et sont posées comme suit :
+
+\begin{itemize}
+    \item \textbf{Espace de travail :} L'espace de travail du robot est déterminé par son rayon $R_W$ et par sa liberté de rotation d'angle $\Delta \phi$. Si on se place dans un espace dont les axes sont dirigés par les coordonnées $(x_P, y_P, \phi)$ du point $P$ et avec comme origine le point $O$, l'espace de travail est alors représenté par un cylindre de rayon $R_W$ et de hauteur $\Delta \phi$. On impose dans ce problème $R_W \geq 100$ mm et $\Delta \phi \geq 60 ^\degree$.  
+    \item \textbf{Conditionnement de la matrice jacobienne :} Le conditionnement inverse de la matrice jacobienne du robot, ainsi que celui de son inverse, doit être supérieur à $0.1$ en tout point de l'espace de travail imposé.
+    \item \textbf{Rigidité :} Pour une force de $10$ Newton appliquée au point $P$ selon l'axe normal au plan de son déplacement, la plate-forme doit se déplacer d'au plus 0.1 mm.
+\end{itemize}
+
+
+
+\section*{Modèles géométriques et cinématiques}
+
+Pour résoudre le problème d'optimisation, il est nécessaire de connaître les modèles géométriques et dynamiques du manipulateur étudié.
+
+\subsection*{Modèle géométrique direct}
+
+Le calcul du modèle géométrique direct pour des manipulateurs planaires à trois degrés de liberté a été étudié, par exemple dans \cite{goss94}. Il a été montré que calculer le modèle géométrique direct peut être ramené à la recherche des racines d'un polynôme de degré 6. Cependant, nous verrons que l'on peut se contenter ici de connaître le modèle géométrique inverse du manipulateur pour résoudre le problème d'optimisation.
+
+\subsection*{Modèle géométrique inverse}
+
+Si on considère les coordonnées $(x_P, y_P, \phi)$ du point P, on peut retrouver les paramètres ${\rho_1, \rho_2, \rho_3}$ qui sont les longueurs des barres actionnées $A_i B_i$. Pour cela, on introduit la notation $\beta_i$ pour définir les angles formés entre les droites portées par $[B_i C_i]$ et celles portées par $[A_i A_{i+1}]$.
+
+On se place dans le repère $\mathcal{R}^0$ centré en $A_1$ et ayant pour axes la droite portée par $[A_1 A_2]$ et sa perpendiculaire verticale orientée vers le haut. Dans ce repère, on peut écrire les relations suivantes sur les coordonnées de $C_1$, notées $(x_{c1}, y_{c1})$ :
+
+\begin{equation}
+    \begin{cases}
+        x_{c1} = \rho_1 + L_b \cos{\beta_1}\\
+        y_{c1} = L_b \sin{\beta_1}\\
+       
+    \end{cases}
+\end{equation}
+
+d'une part, et 
+
+\begin{equation}
+    \begin{cases}
+        x_{c1} = x_P + r \cos{(\phi + \frac{7\pi}{6})}\\
+        y_{c1} = y_P + r \sin{(\phi + \frac{7\pi}{6})}
+    \end{cases}
+\end{equation}
+
+d'autre part. On peut ainsi en déduire $\beta_1$ et surtout $\rho_1$. En procédant de façon analogue, on établit que
+
+\begin{equation}
+    \begin{cases}
+    x_{c2} = \sqrt{3} R-\frac{1}{2}\rho_2 + L_b \cos{\left(\beta_2+\frac{2 \pi}{3}\right)}\\
+    y_{c2} = \frac{\sqrt{3}}{2} \rho_2+ L_b \sin{\left(\beta_2+\frac{2 \pi}{3} \right)} \\
+    x_{c3} =  \frac{\sqrt{3}}{2} R-\frac{1}{2}\rho_3 + L_b \cos{\left(\beta_3+\frac{4 \pi}{3}\right)}\\
+    y_{c3} =  \frac{3}{2}R-\frac{\sqrt{3}}{2} \rho_3+ L_b \sin{\left(\beta_3+\frac{4 \pi}{3} \right)} \\
+    \end{cases}
+\end{equation}
+
+\begin{equation}
+    \begin{cases}
+        x_{c2} = x_P + r \cos{(\phi - \frac{\pi}{6})}\\
+        y_{c2} = y_P + r \sin{(\phi - \frac{\pi}{6})}\\
+        x_{c3} = x_P + r \cos{(\phi + \frac{\pi}{2})}\\
+        y_{c3} = y_P + r \sin{(\phi + \frac{\pi}{2})}
+    \end{cases}
+\end{equation}
+
+Ces équations nous donnent alors accès au modèle géométrique indirect du manipulateur.
+
+\subsection*{Modèle cinématique direct}
+
+Le calcul du modèle cinématique direct est détaillé dans \cite{caro11}, et il en résulte :
+
+\begin{equation}
+    \mathbf{J}= \mathbf{B}^{-1} \mathbf{A}
+    \label{jacobian}
+\end{equation}
+avec
+
+\begin{equation*}
+    \mathbf{A} = \begin{bmatrix}
+    b_1^T & rb_1^TEe_1\\
+    b_2^T & rb_2^TEe_2\\
+    b_3^T & rb_3^TEe_3\\
+    \end{bmatrix}
+\end{equation*}
+
+et 
+
+\begin{equation*}
+    \mathbf{B} = \begin{bmatrix}
+    b_1^T a_1 & 0 & 0\\
+    0 & b_2^T a_2& 0\\
+    0 & 0 & b_3^T a_3\\
+    \end{bmatrix}
+\end{equation*}
+
+    \section*{Hypothèses sur la rigidité}
+
+On cherche ici à satisfaire la contrainte suivante de l'énoncé :
+
+\begin{quote}``\textit{For any force of magnitude 10 N applied on the moving-platform in the plane of motion, the point-displacement of the moving-platform should be lower than 0.1 mm throughout the regular workspace.}''
+\end{quote}
+
+On décide, pour étudier la rigidité du manipulateur planaire, d'émettre une hypothèse simplificatrice sur les bras et les articulations. Il est possible de modéliser les raideurs des articulations, des bras et de la plate-forme par des ressorts virtuels à 1 et 6 degrés de liberté respectivement, ce qui permet d'analyser la rigidité du mécanisme quand celui-ci est soumis à des torseurs en trois dimensions (\cite{caro11}). Cependant, dans le problème considéré, la masse du manipulateur n'est pas la mesure que l'on cherche \textit{a priori} à minimiser. Néanmoins, il est intéressant de considérer au moins la raideur des bras $B_i C_i$ pour faire apparaître les sections de ceux-ci comme donnée géométrique du problème.
+
+On suppose ainsi que les barres actionnées par les liaisons prismatiques possèdent une raideur infinie quand elles sont commandées, de même que la plate-forme mobile. On simplifie donc le problème pour s'intéresser uniquement aux raideurs des trois barres intermédiaires.
+
+On se place dans le cas où une force de norme $F$ est appliquée au point P dans une direction portée par un vecteur apartenant au plan de mouvement du robot. On peut associer la déformation des trois barres intermédiaires à celle de trois poutres de type "encastrée-libre", et la matrice de raideur du mécanisme peut être écrite sous la forme :
+
+\begin{equation}
+    \mathbf{K} = \sum_{i=1}^{3} \mathbf{K}_i^0
+\end{equation}
+
+Avec chaque $K_i^0$ la matrice de raideur d'une poutre encastrée-libre exprimée dans le repère utilisé précédemment. On ne tient compte ici que des efforts en déplacement dans le plan de déplacement du robot, de telle sorte que chaque matrice $k_i$ peut s'écrire, dans un repère où l'axe des abscisses est orienté selon la longueur de la barre :
+
+\begin{equation}
+    \mathbf{K}_i = \begin{bmatrix}
+    k_c & 0\\
+    0 & k_f
+    \end{bmatrix}
+\end{equation}
+
+$k_c$ et $k_f$ sont les raideurs des trois barres en compression et en flexion respectivement, de telle sorte que
+
+\begin{equation*}
+    k_c = \frac{a^2 E}{L_b}
+\end{equation*}
+\begin{equation*}
+    k_f = \frac{3EI}{L_b^3} = \frac{a^4 E}{4L_b^3}
+\end{equation*}
+
+Avec $E$ le module de Young du matériau choisi pour les barres, $a$ le côté de leur section choisie carrée, et $I$ leur moment d'inertie qu'on a remplacé par son expression en fonction de $a$.
+
+On cherche maintenant à exprimer les matrices $K_i$ dans le repère $R^0$, ce qu'on peut faire avec la relation suivante :
+
+\begin{equation}
+    \mathbf{K}_i^0 =  \begin{bmatrix} \cos{\beta_i} & \sin{\beta_i}\\
+    -\sin{\beta_i} & \cos{\beta_i}
+    \end{bmatrix}\mathbf{K}_i
+\end{equation}
+
+Connaissant ainsi la matrice de raideur $K$, on peut exprimer la condition de rigidité en partant de la relation entre une force $F$ exercée au point $P$ et le déplacement associé $\delta t = \begin{bmatrix}\delta x & \delta y \end{bmatrix} ^T$ :
+
+\begin{equation*}
+    \mathbf{K} \delta t = F
+\end{equation*}
+
+L'énoncé impose que le déplacement engendré par une force de norme 10N soit inférieur à 0.1mm. Après application de l'inégalité de Cauchy-Scharwz, cela revient simplement à l'inégalité :
+
+\begin{equation}
+    \lvert\lvert \mathbf{K} \rvert\rvert >10^5
+    \label{rigidity}
+\end{equation}
+
+En imposant une rigidité minimum pour le robot, le côté de la section des barres intermédiaires $a$ devient un paramètre supplémentaire du problème. Cependant, puisque $a$ n'est contraint que par une seule inégalité (\hyperref[rigidity]{Formule \ref{rigidity}}), on peut en déduire sa valeur optimale sans en faire un paramètre de l'algorithme d'optimisation. En particulier, pour que l'inégalité soit vraie pour toutes les valeurs de $\beta_i$, on en déduit que $a$ doit vérifier
+
+\begin{equation*}
+    a^8 + 16 L_b^4 \ a^4 > \frac{16 L_b^4}{9 E^2} \cdot 10^{10}
+\end{equation*}
+
+\section*{Contrainte de conditionnement}
+
+Intéressons-nous maintenant à la condition imposée sur la dextérité du mécanisme:
+
+\begin{quote}``\textit{The inverse condition number of the normalized kinematic Jacobian matrix should be larger than 0.1 throughout the regular workspace.}''
+\end{quote}
+
+Faisons remarquer que le robot est isotrope quand il existe un réel $\lambda$ tel que $\mathbf{J}\ \mathbf{J}^T = \lambda I_2$. On peut se servir de cette information pour notre optimisation en choisissant pour les paramètres des valeurs qui tendent à faire approcher ce rapport. 
+
+Le problème est ici que la matrice jacobienne n'est pas normalisée puisqu'elle mélange des grandeurs de différentes unités ($\SI{}{m\cdot s^{-1}}$ et $\SI{}{rad \cdot s^{-1}}$). Pour parler de conditionnement, il faudrait donc utiliser des coefficients pour normaliser $J$, reste alors à choisir les bonnes valeurs pour ces coefficients
+
+D'autre part, le $\lambda$ de la formule précédente correspond au conditionnement de $\mathbf{J}$, autrement dit au quotient de $|\sigma_{max}|$ sur $|\sigma_{min}|$, avec $\sigma_{max}$ et $\sigma_{min}$ respectivement la plus grande et la plus petite valeur propre de $\mathbf{J}$ en valeur absolue. L'énoncé demandant un conditionnement inverse supérieur à $0.1$, on a donc la condition suivante à respecter : 
+\begin{equation}
+    \frac{|\sigma_{max}|}{|\sigma_{min}|}<10
+\end{equation}
+
+\section*{Récapitulatif du problème d'optimisation}
+
+Maintenant que la plupart des contraintes de l'énoncé ont été exprimées sous forme mathématique, on peut récapituler le problème d'optimisation.
+
+\begin{itemize}
+    \item Les variables du problème sont $r$, $R$, $L_b$ et $a$.
+    \item la fonction à minimiser est :
+    \begin{equation}
+        f \colon (r,R,L_b,a) \mapsto R
+    \end{equation}
+    \item Les inéquations à respecter sont :
+    \begin{equation}
+    \begin{aligned}
+        R &\leq 2(L_b+r)\\
+        R_W &\geq \SI{100}{mm}\\
+        \Delta \phi &\geq 60^\degree\\
+        a^6 + 16 L_b^4 \ a^4 & > \frac{16 L_b^6}{9 E^2} \cdot 10^{10}\\
+        \frac{|\sigma_{max}|}{|\sigma_{min}|} & <10
+    \end{aligned}  
+    \label{ineqs}
+    \end{equation}
+\end{itemize}
+
+Dans ce qui suit, nous allons discuter de la méthode de résolution de ce problème de façon numérique à l'aide
+de Matlab et de sa \textit{toolbox} d'optimisation non-linéaire. 
+
+\section*{Recherche d'une solution sur Matlab}
+
+Nous choisissons pour ce problème d'optimisation qui consiste en la minimisation d'une fonction en respectant des contraintes en inégalités, l'utilisation de l'outil \texttt{fmincon} sur Matlab. Le problème faisant intervenir des contraintes non-linéaires, la difficulté de la résolution du programme réside dans la fonction \texttt{nlincond}, qui retourne pour une valeur donnée des variables du problème, le caractère respecté ou non des inégalités.
+
+\bigskip
+
+Une des premières opérations à effectuer est de calculer, pour une configuration donnée, la valeur minimale de $a$ correspondante. Pour cela, il suffit d'écrire au début de la fonction \texttt{nlincond.m} :
+
+\bigskip
+
+\begin{minted}[linenos=false,bgcolor=white]{matlab}
+ 
+symsx;
+a = vpasolve(x^8 + 16*Lb^4*x^4 ==
+16*Lb^6*10^10/(9*E^2), x, [0 1]);
+\end{minted}
+\captionof{listing}{Détermination de la valeur minimum de a dans la fonction \texttt{nlincond}}
+
+\begin{remark}
+On aura pris soin de donner une valeur pour $E$ au préalable. En choisissant l'acier comme matériau pour le robot, on obtient pour des barres intermédiaires de longueur \SI{50}{cm} une épaisseur minimale théorique de $\SI{0.3}{mm}$ environ, ce qui implique que la raideur du manipulateur n'est pas contraignante dans la conception du mécanisme avec les simplifications faites. Si la masse devient un facteur important du problème, il convient d'opter pour un modèle moins simplificateur dans le calcul de la raideur du robot.
+\end{remark}
+
+Une autre opération à calculer en début de fonction est la vérification de la première inégalité de (\ref{ineqs}), ce qui permet de mettre un terme à l'exécution de la fonction si possible. 
+
+Ensuite, il convient de vérifier la validation des conditions sur l'espace de travail. Pour cela, on sélectionne $n$ points sur le périmètre de l'espace de travail désiré. Les coordonnés dans le repère $R^0$ de ces points sont de la forme
+\begin{equation*}
+    \left(\frac{R \sqrt{3}}{2}+R_W \cos{\frac{k \pi}{n}}, \frac{R}{2}+R_W \sin{\frac{k \pi}{n}} \right), 0\leq k<n
+\end{equation*}
+
+Puisqu'on désire des valeurs de $\phi$ dans un intervalle de 60 degrés, on teste pour chacune de ces positions des valeurs de $\phi$ égales à $-\frac{\pi}{6}$, $0$ et $\frac{\pi}{6}$. Cela fait donc $3n$ configurations à tester de par le modèle inverse: si celui-ci ne trouve pas de solution admissible (c'est-à-dire vérifiant, pour $i$ compris entre $1$ et $3$, $0 \leq \rho_i \leq \sqrt{3}R$) pour une de ces configurations, les variables du problème sont mal choisies et on peut leur assigner de nouvelles valeurs.
+
+Si les conditions sur l'espace de travail sont réunies, il reste à vérifier le conditionnement de la matrice jacobienne, ce qui peut se faire simplement par l'appel de la fonction \texttt{eig} qui renvoie l'ensemble des valeurs propres de la matrice passée en argument.
+
+\begin{remark}
+Comme dit précédemment, la contrainte sur le conditionnement n'est utile que si la matrice jacobienne est correctement normalisée. Nous considérerons ici qu'un conditionnement inférieur à 200 pour la matrice jacobienne construite à partir de 
+
+\begin{equation*}
+    \mathbf{A} = \begin{bmatrix}
+    b_1^T & b_1^TEe_1\\
+    b_2^T & b_2^TEe_2\\
+    b_3^T & b_3^TEe_3\\
+    \end{bmatrix}
+\end{equation*}
+
+où l'expression de $\mathbf{A}$ remplace celle utilisée en \hyperref[jacobian]{(\ref{jacobian})}
+\end{remark}
+
+L'exécution de l'algorithme ne trouve pas de solution pour $\Delta \phi = 60\degree$. Il en est de même pour 45 et 35 degrés. Pour  $\Delta \phi = 30\degree$, nous trouvons la solution  suivante : 
+\bigskip
+
+\begin{minted}[linenos=false,bgcolor=white]{matlab}
+ Lb = 0.3300
+ R = 0.5955
+ r = 0.2183
+\end{minted}
+
+\subsection*{Pistes d'amélioration de la recherche de solution}
+Le problème étudié ne tient compte en aucune façon de la masse du robot, qui est souvent un facteur déterminant dans le choix d'un design particulier de robot puisqu'elle contraint le dimensionnement des moteurs, l'épaisseur des barres ou le choix des matériaux, entre autres. On peut donc songer à faire entrer en jeu la masse $m$ du robot dans le problème, ce qui peut se faire de plusieurs façons :
+
+\begin{itemize}
+    \item Limiter la masse de façon brute en rajoutant à \hyperref[ineqs]{(\ref{ineqs})} une inégalité définissant une masse limite souhaitée, sous la forme $m \leq m_{max}$. Cela a pour avantage de très peu changer le programme déjà écrit précédemment, au prix d'un résultat probablement perfectible. En effet, on peut imaginer l'existence d'une solution avec une valeur de $m$ encore plus faible satisfaisant toutes les conditions, mais n'étant pas trouvée par le programme. A l'inverse, il est possible qu'aucune solution ne soit trouvée car la minimisation de $f$ n'est pas équivalente à une minimisation de la masse.
+    
+    \item Changer la fonction à minimiser en y faisant intervenir la masse. Par exemple, on peut imaginer une fonction $f$ de la forme
+    \begin{equation}
+         f \colon (r,R,L_b,a) \mapsto N_R \cdot \frac{R}{W_R}+ N_m \cdot \frac{m}{W_m}
+    \end{equation}
+    avec $N_R$ et $N_W$ des facteurs de normalisation, et $W_R$ et $W_m$ des facteurs de pondération. Cela permet d'une part de toujours proposer des solutions minimisant à la fois la taille de l'espace occupé par le robot et la masse de celui-ci, et d'autre part de choisir exactement à quel point la minimisation de l'un est privilégiée sur la minimisation de l'autre, grâce aux facteurs de normalisation et de pondération. Cependant, cela ne permet pas de réaliser l'optimisation des deux paramètres simultanément, seulement celle d'une de leurs combinaisons.
+    
+    \item Changer l'optimisation pour optimiser deux fonctions au lieu d'une (optimisation à objectifs mutiples). Cela requiert l'utilisation d'un algorithme différent, comme modeFrontier \cite{modeFrontier}, qui est utilisé dans \cite{caro11}. Ainsi, on peut obtenir une vision globale de l'optimisation simultanée des deux paramètres.
+\end{itemize}
+\bigskip
+
+Une autre piste d'amélioration de l'algorithme est dans le calcul de la matrice jacobienne et de son conditionnement. En effet, ces calculs reviennent (en termes de complexité calculatoire) à la multiplication de matrices entre elles. Ces opérations peuvent être optimisées par des algorithmes comme celui présenté par M. Bläzer dans \cite{blaser03}. Il y prouve qu'on peut obtenir une borne inférieure de $19$ opérations pour le produit de deux matrices $3 \times 3$. Pour des problèmes impliquant des matrices jacobiennes de grande taille, il existe d'autres algorithmes optimisant la complexité de la multiplication, comme celui proposé par A. Davie et A. Stothers dans \cite{davie13}.
+
+
+
+\end{multicols*}
+
+\begin{thebibliography}{9}
+
+ \bibitem{merl06}
+  Merlet, J. (2006). \textit{Parallel robots}. Dordrecht, Netherlands: Springer.  
+
+\bibitem{caro11}
+  Caro, S., Chablat, D., Ur-Rehman, R., $\&$ Wenger, P. (2011). \textit{Multiobjective Design Optimization of 3–PRR Planar Parallel Manipulators}. Global Product Development, 373-383. doi:10.1007/978-3-642-15973-2\_37
+  
+\bibitem{goss94}  
+  Gosselin, C. M., \& Merlet, J. (1994). \textit{The direct kinematics of planar parallel manipulators: Special architectures and number of solutions}. Mechanism and Machine Theory, 29(8), 1083-1097. doi:10.1016/0094-114x(94)90001-9
+ 
+\bibitem{modeFrontier}
+  ESTECO (2008) Modefrontier, version 4.0.3.
+
+\bibitem{blaser03}
+    Bläser, M. (2003). \textit{On the complexity of the multiplication of matrices of small formats}. Journal of Complexity, Volume 19, Issue 1, 43-60. doi:10.1016/S0885-064X(02)00007-9.
+
+\bibitem{davie13}
+    Davie, A., \& Stothers, A. (2013). \textit{Improved bound for complexity of matrix multiplication}. Proceedings of the Royal Society of Edinburgh: Section A Mathematics, 143(2), 351-369. doi:10.1017/S0308210511001648
+\end{thebibliography}
+\end{document}
+
